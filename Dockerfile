@@ -1,17 +1,19 @@
-FROM ubuntu:latest
+FROM ubuntu:24.04
 
 LABEL org.opencontainers.image.authors="tigerblue77"
 
-RUN apt-get update
-
-RUN apt-get install ipmitool -y
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ipmitool \
+    dos2unix \
+    && rm -rf /var/lib/apt/lists/*
 
 ADD functions.sh /app/functions.sh
 ADD constants.sh /app/constants.sh
 ADD healthcheck.sh /app/healthcheck.sh
 ADD Dell_iDRAC_fan_controller.sh /app/Dell_iDRAC_fan_controller.sh
 
-RUN chmod 0777 /app/functions.sh /app/healthcheck.sh /app/Dell_iDRAC_fan_controller.sh
+# Ensure LF line endings and proper permissions
+RUN dos2unix /app/*.sh && chmod 0755 /app/functions.sh /app/healthcheck.sh /app/Dell_iDRAC_fan_controller.sh
 
 WORKDIR /app
 

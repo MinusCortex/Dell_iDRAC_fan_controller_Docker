@@ -2,15 +2,23 @@
 # This function applies Dell's default dynamic fan control profile
 function apply_Dell_default_fan_control_profile() {
   # Use ipmitool to send the raw command to set fan control to Dell default
-  ipmitool -I $IDRAC_LOGIN_STRING raw 0x30 0x30 0x01 0x01 > /dev/null
+  ipmitool -I $IDRAC_LOGIN_STRING raw 0x30 0x30 0x01 0x01 > /dev/null 2>&1
   CURRENT_FAN_CONTROL_PROFILE="Dell default dynamic fan control profile"
 }
 
 # This function applies a user-specified static fan control profile
 function apply_user_fan_control_profile() {
-  # Use ipmitool to send the raw command to set fan control to user-specified value
-  ipmitool -I $IDRAC_LOGIN_STRING raw 0x30 0x30 0x01 0x00 > /dev/null
-  ipmitool -I $IDRAC_LOGIN_STRING raw 0x30 0x30 0x02 0xff $HEXADECIMAL_FAN_SPEED > /dev/null
+  # Use ipmitool to send the raw command to disable automatic fan control
+  ipmitool -I $IDRAC_LOGIN_STRING raw 0x30 0x30 0x01 0x00 > /dev/null 2>&1
+  # Set fan speed for all fans (0xff = all zones)
+  # Some iDRACs don't support 0xff, try individual zones as fallback
+  if ! ipmitool -I $IDRAC_LOGIN_STRING raw 0x30 0x30 0x02 0xff $HEXADECIMAL_FAN_SPEED > /dev/null 2>&1; then
+    # Fallback: set fan speed for each zone individually (zones 0x00 to 0x03)
+    ipmitool -I $IDRAC_LOGIN_STRING raw 0x30 0x30 0x02 0x00 $HEXADECIMAL_FAN_SPEED > /dev/null 2>&1
+    ipmitool -I $IDRAC_LOGIN_STRING raw 0x30 0x30 0x02 0x01 $HEXADECIMAL_FAN_SPEED > /dev/null 2>&1
+    ipmitool -I $IDRAC_LOGIN_STRING raw 0x30 0x30 0x02 0x02 $HEXADECIMAL_FAN_SPEED > /dev/null 2>&1
+    ipmitool -I $IDRAC_LOGIN_STRING raw 0x30 0x30 0x02 0x03 $HEXADECIMAL_FAN_SPEED > /dev/null 2>&1
+  fi
   CURRENT_FAN_CONTROL_PROFILE="User static fan control profile ($DECIMAL_FAN_SPEED%)"
 }
 
@@ -68,11 +76,29 @@ function retrieve_temperatures() {
 
   local -r DATA=$(ipmitool -I $IDRAC_LOGIN_STRING sdr type temperature | grep degrees)
 
-  # Parse CPU data
-  local -r CPU_DATA=$(echo "$DATA" | grep "3\." | grep -Po '\d{2}')
-  CPU1_TEMPERATURE=$(echo $CPU_DATA | awk "{print \$$CPU1_TEMPERATURE_INDEX;}")
+  # Parse CPU data - try multiple patterns to support different iDRAC firmware versions
+  # Some iDRACs use "3." prefix (e.g., "3.1 Temp"), others use "0Eh" or "CPU" directly
+  local CPU_DATA
+  CPU_DATA=$(echo "$DATA" | grep -i "CPU" | grep -Po '\d{2,3}(?= degrees)')
+  if [ -z "$CPU_DATA" ]; then
+    # Fallback: try the original "3." pattern for older iDRAC formats
+    CPU_DATA=$(echo "$DATA" | grep "3\." | grep -Po '\d{2,3}(?= degrees)')
+  fi
+  if [ -z "$CPU_DATA" ]; then
+    # Last resort: try matching "Temp" lines that are not Inlet/Exhaust
+    CPU_DATA=$(echo "$DATA" | grep -iv "Inlet\|Exhaust\|Ambient" | grep -Po '\d{2,3}(?= degrees)')
+  fi
+
+  CPU1_TEMPERATURE=$(echo "$CPU_DATA" | awk "NR==$CPU1_TEMPERATURE_INDEX{print}")
+  if [ -z "$CPU1_TEMPERATURE" ]; then
+    CPU1_TEMPERATURE=0
+  fi
+
   if $IS_CPU2_TEMPERATURE_SENSOR_PRESENT; then
-    CPU2_TEMPERATURE=$(echo $CPU_DATA | awk "{print \$$CPU2_TEMPERATURE_INDEX;}")
+    CPU2_TEMPERATURE=$(echo "$CPU_DATA" | awk "NR==$CPU2_TEMPERATURE_INDEX{print}")
+    if [ -z "$CPU2_TEMPERATURE" ]; then
+      CPU2_TEMPERATURE="-"
+    fi
   else
     CPU2_TEMPERATURE="-"
   fi
@@ -81,18 +107,24 @@ function retrieve_temperatures() {
   CPUS_TEMPERATURES="$CPU1_TEMPERATURE"
   NUMBER_OF_DETECTED_CPUS=1
 
-  # If CPU2 is present, parse its temperature data and add it to CPUS_TEMPERATURES
-  if [ -n "$CPU2_TEMPERATURE" ]; then
+  # If CPU2 is present and has a valid temperature, add it to CPUS_TEMPERATURES
+  if [ -n "$CPU2_TEMPERATURE" ] && [ "$CPU2_TEMPERATURE" != "-" ]; then
     CPUS_TEMPERATURES+=";$CPU2_TEMPERATURE"
     ((NUMBER_OF_DETECTED_CPUS++))
   fi
 
   # Parse inlet temperature data
-  INLET_TEMPERATURE=$(echo "$DATA" | grep Inlet | grep -Po '\d{2}' | tail -1)
+  INLET_TEMPERATURE=$(echo "$DATA" | grep -i Inlet | grep -Po '\d{2,3}(?= degrees)' | tail -1)
+  if [ -z "$INLET_TEMPERATURE" ]; then
+    INLET_TEMPERATURE=0
+  fi
 
   # If exhaust temperature sensor is present, parse its temperature data
   if $IS_EXHAUST_TEMPERATURE_SENSOR_PRESENT; then
-    EXHAUST_TEMPERATURE=$(echo "$DATA" | grep Exhaust | grep -Po '\d{2}' | tail -1)
+    EXHAUST_TEMPERATURE=$(echo "$DATA" | grep -i Exhaust | grep -Po '\d{2,3}(?= degrees)' | tail -1)
+    if [ -z "$EXHAUST_TEMPERATURE" ]; then
+      EXHAUST_TEMPERATURE="-"
+    fi
   else
     EXHAUST_TEMPERATURE="-"
   fi
@@ -101,13 +133,13 @@ function retrieve_temperatures() {
 # /!\ Use this function only for Gen 13 and older generation servers /!\
 function enable_third_party_PCIe_card_Dell_default_cooling_response() {
   # We could check the current cooling response before applying but it's not very useful so let's skip the test and apply directly
-  ipmitool -I $IDRAC_LOGIN_STRING raw 0x30 0xce 0x00 0x16 0x05 0x00 0x00 0x00 0x05 0x00 0x00 0x00 0x00 > /dev/null
+  ipmitool -I $IDRAC_LOGIN_STRING raw 0x30 0xce 0x00 0x16 0x05 0x00 0x00 0x00 0x05 0x00 0x00 0x00 0x00 > /dev/null 2>&1
 }
 
 # /!\ Use this function only for Gen 13 and older generation servers /!\
 function disable_third_party_PCIe_card_Dell_default_cooling_response() {
   # We could check the current cooling response before applying but it's not very useful so let's skip the test and apply directly
-  ipmitool -I $IDRAC_LOGIN_STRING raw 0x30 0xce 0x00 0x16 0x05 0x00 0x00 0x00 0x05 0x00 0x01 0x00 0x00 > /dev/null
+  ipmitool -I $IDRAC_LOGIN_STRING raw 0x30 0xce 0x00 0x16 0x05 0x00 0x00 0x00 0x05 0x00 0x01 0x00 0x00 > /dev/null 2>&1
 }
 
 # Returns :
@@ -211,18 +243,39 @@ function print_temperature_array_line() {
   # Creating an array from the string
   local -r CPUs_temperatures_array=(${LOCAL_CPUS_TEMPERATURES//;/ })
 
-  printf "%19s  %3d°C " "$(date +"%d-%m-%Y %T")" $LOCAL_INLET_TEMPERATURE
-  # Itération sur les températures dans le tableau
+  # Print inlet temperature (handle non-numeric values)
+  if [[ "$LOCAL_INLET_TEMPERATURE" =~ ^[0-9]+$ ]]; then
+    printf "%19s  %3d°C " "$(date +"%d-%m-%Y %T")" "$LOCAL_INLET_TEMPERATURE"
+  else
+    printf "%19s  %5s " "$(date +"%d-%m-%Y %T")" "$LOCAL_INLET_TEMPERATURE"
+  fi
+
+  # Print CPU temperatures (handle non-numeric values)
   for temperature in "${CPUs_temperatures_array[@]}"; do
-    printf " %3d°C " $temperature
+    if [[ "$temperature" =~ ^[0-9]+$ ]]; then
+      printf " %3d°C " "$temperature"
+    else
+      printf " %5s " "$temperature"
+    fi
   done
 
-  printf " %5s°C  %40s  %51s  %s\n" "$LOCAL_EXHAUST_TEMPERATURE" "$LOCAL_CURRENT_FAN_CONTROL_PROFILE" "$LOCAL_THIRD_PARTY_PCIE_CARD_DELL_DEFAULT_COOLING_RESPONSE_STATUS" "$LOCAL_COMMENT"
+  # Print exhaust temperature (handle non-numeric values like "-")
+  if [[ "$LOCAL_EXHAUST_TEMPERATURE" =~ ^[0-9]+$ ]]; then
+    printf " %3d°C  " "$LOCAL_EXHAUST_TEMPERATURE"
+  else
+    printf " %5s  " "$LOCAL_EXHAUST_TEMPERATURE"
+  fi
+
+  printf "%40s  %51s  %s\n" "$LOCAL_CURRENT_FAN_CONTROL_PROFILE" "$LOCAL_THIRD_PARTY_PCIE_CARD_DELL_DEFAULT_COOLING_RESPONSE_STATUS" "$LOCAL_COMMENT"
 }
 
 # Define functions to check if CPU 1 and CPU 2 temperatures are above the threshold
-function CPU1_OVERHEATING() { [ $CPU1_TEMPERATURE -gt "$CPU_TEMPERATURE_THRESHOLD" ]; }
-function CPU2_OVERHEATING() { [ $CPU2_TEMPERATURE -gt "$CPU_TEMPERATURE_THRESHOLD" ]; }
+function CPU1_OVERHEATING() {
+  [[ "$CPU1_TEMPERATURE" =~ ^[0-9]+$ ]] && [ "$CPU1_TEMPERATURE" -gt "$CPU_TEMPERATURE_THRESHOLD" ]
+}
+function CPU2_OVERHEATING() {
+  [[ "$CPU2_TEMPERATURE" =~ ^[0-9]+$ ]] && [ "$CPU2_TEMPERATURE" -gt "$CPU_TEMPERATURE_THRESHOLD" ]
+}
 
 function print_error() {
   local -r ERROR_MESSAGE="$1"

@@ -27,12 +27,13 @@ set_iDRAC_login_string "$IDRAC_HOST" "$IDRAC_USERNAME" "$IDRAC_PASSWORD"
 
 get_Dell_server_model
 
-if [[ ! $SERVER_MANUFACTURER == "DELL" ]]; then
-  print_error_and_exit "Your server isn't a Dell product"
+if [[ ! "${SERVER_MANUFACTURER^^}" =~ DELL ]]; then
+  print_error_and_exit "Your server isn't a Dell product (detected manufacturer: '$SERVER_MANUFACTURER')"
 fi
 
 # If server model is Gen 14 (*40) or newer
-if [[ $SERVER_MODEL =~ .*[RT][[:space:]]?[0-9][4-9]0.* ]]; then
+# Matches patterns like: R740, T640, R750xs, R760, C6620, XR4000, etc.
+if [[ $SERVER_MODEL =~ [RTCX][[:alnum:]]*[[:space:]]?[0-9][4-9][0-9][0-9]? ]] || [[ $SERVER_MODEL =~ [4-9][0-9]0 ]]; then
   readonly DELL_POWEREDGE_GEN_14_OR_NEWER=true
   readonly CPU1_TEMPERATURE_INDEX=2
   readonly CPU2_TEMPERATURE_INDEX=4
@@ -56,6 +57,14 @@ TABLE_HEADER_PRINT_COUNTER=$TABLE_HEADER_PRINT_INTERVAL
 # Set the flag used to check if the active fan control profile has changed
 IS_DELL_DEFAULT_FAN_CONTROL_PROFILE_APPLIED=true
 
+# Initialize third-party PCIe card cooling response status
+# For Gen 14+ servers, this feature is not supported
+if $DELL_POWEREDGE_GEN_14_OR_NEWER; then
+  THIRD_PARTY_PCIE_CARD_DELL_DEFAULT_COOLING_RESPONSE_STATUS="N/A (Gen 14+)"
+else
+  THIRD_PARTY_PCIE_CARD_DELL_DEFAULT_COOLING_RESPONSE_STATUS="Enabled"
+fi
+
 # Check present sensors
 IS_EXHAUST_TEMPERATURE_SENSOR_PRESENT=true
 IS_CPU2_TEMPERATURE_SENSOR_PRESENT=true
@@ -66,11 +75,11 @@ SLEEP_PROCESS_PID=$!
 
 retrieve_temperatures $IS_EXHAUST_TEMPERATURE_SENSOR_PRESENT $IS_CPU2_TEMPERATURE_SENSOR_PRESENT
 
-if [ -z "$EXHAUST_TEMPERATURE" ]; then
+if [ -z "$EXHAUST_TEMPERATURE" ] || [ "$EXHAUST_TEMPERATURE" == "-" ]; then
   echo "No exhaust temperature sensor detected."
   IS_EXHAUST_TEMPERATURE_SENSOR_PRESENT=false
 fi
-if [ -z "$CPU2_TEMPERATURE" ]; then
+if [ -z "$CPU2_TEMPERATURE" ] || [ "$CPU2_TEMPERATURE" == "-" ]; then
   echo "No CPU2 temperature sensor detected."
   IS_CPU2_TEMPERATURE_SENSOR_PRESENT=false
 fi
