@@ -32,8 +32,13 @@ if [[ ! "${SERVER_MANUFACTURER^^}" =~ DELL ]]; then
 fi
 
 # If server model is Gen 14 (*40) or newer
-# Matches patterns like: R740, T640, R750xs, R760, C6620, XR4000, etc.
-if [[ $SERVER_MODEL =~ [RTCX][[:alnum:]]*[[:space:]]?[0-9][4-9][0-9][0-9]? ]] || [[ $SERVER_MODEL =~ [4-9][0-9]0 ]]; then
+# Gen 14 = x40 (R740, T640), Gen 15 = x50 (R750), Gen 16 = x60 (R760, R6615), etc.
+# Gen 11 = x10 (R810), Gen 12 = x20 (R720), Gen 13 = x30 (R730) are NOT Gen 14+
+# Pattern explanation:
+#   [RT] followed by optional space, then a digit, then 4-9 (generation), then 0 or more digits
+#   OR [CX] chassis/XR models with 4+ digit numbers containing generation 4-9 in tens position
+#   OR 4-digit models like R6615, R7625 where second digit is 4-9 (generation indicator)
+if [[ $SERVER_MODEL =~ [RT][[:space:]]?[0-9][4-9][0-9][0-9]? ]] || [[ $SERVER_MODEL =~ [CX][[:alnum:]]*[0-9][4-9][0-9][0-9] ]]; then
   readonly DELL_POWEREDGE_GEN_14_OR_NEWER=true
   readonly CPU1_TEMPERATURE_INDEX=2
   readonly CPU2_TEMPERATURE_INDEX=4

@@ -114,14 +114,27 @@ function retrieve_temperatures() {
   fi
 
   # Parse inlet temperature data
+  # Try "Inlet" label first (newer iDRAC), then "Ambient" label, then entity 10.1 (iDRAC 6)
   INLET_TEMPERATURE=$(echo "$DATA" | grep -i Inlet | grep -Po '\d{2,3}(?= degrees)' | tail -1)
+  if [ -z "$INLET_TEMPERATURE" ]; then
+    INLET_TEMPERATURE=$(echo "$DATA" | grep -i Ambient | grep -Po '\d{2,3}(?= degrees)' | tail -1)
+  fi
+  if [ -z "$INLET_TEMPERATURE" ]; then
+    # iDRAC 6 format: entity 10.1 is typically the inlet/ambient sensor
+    INLET_TEMPERATURE=$(echo "$DATA" | grep "10\.1" | grep -Po '\d{2,3}(?= degrees)' | tail -1)
+  fi
   if [ -z "$INLET_TEMPERATURE" ]; then
     INLET_TEMPERATURE=0
   fi
 
   # If exhaust temperature sensor is present, parse its temperature data
+  # Try "Exhaust" label first (newer iDRAC), then entity 10.2 (iDRAC 6)
   if $IS_EXHAUST_TEMPERATURE_SENSOR_PRESENT; then
     EXHAUST_TEMPERATURE=$(echo "$DATA" | grep -i Exhaust | grep -Po '\d{2,3}(?= degrees)' | tail -1)
+    if [ -z "$EXHAUST_TEMPERATURE" ]; then
+      # iDRAC 6 format: entity 10.2 is typically the exhaust sensor
+      EXHAUST_TEMPERATURE=$(echo "$DATA" | grep "10\.2" | grep -Po '\d{2,3}(?= degrees)' | tail -1)
+    fi
     if [ -z "$EXHAUST_TEMPERATURE" ]; then
       EXHAUST_TEMPERATURE="-"
     fi
