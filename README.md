@@ -1,6 +1,11 @@
 <div id="top"></div>
 
-# Dell iDRAC fan controller Docker image
+# Dell iDRAC fan controller Docker image (Dell R810 / iDRAC 6 Fork)
+
+> **This is a fork specifically patched for Dell PowerEdge R810 with iDRAC 6.**
+> It includes compatibility fixes for temperature parsing, IPMI raw commands, and printf errors that occur on older iDRAC 6 firmware.
+>
+> Original project: [tigerblue77/Dell_iDRAC_fan_controller_Docker](https://github.com/tigerblue77/Dell_iDRAC_fan_controller_Docker)
 
 ## Table of contents
 <ol>
@@ -65,8 +70,11 @@ This Docker container is currently built and available for the following CPU arc
 <!-- DOWNLOAD DOCKER IMAGE -->
 ## Download Docker image
 
-- [Docker Hub](https://hub.docker.com/r/tigerblue77/dell_idrac_fan_controller)
-- [GitHub Containers Repository](https://github.com/tigerblue77/Dell_iDRAC_fan_controller_Docker/pkgs/container/dell_idrac_fan_controller)
+- [GitHub Container Registry (this fork)](https://github.com/MinusCortex/Dell_iDRAC_fan_controller_Docker/pkgs/container/dell_idrac_fan_controller)
+
+```bash
+docker pull ghcr.io/minuscortex/dell_idrac_fan_controller:latest
+```
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -86,7 +94,7 @@ docker run -d \
   -e DISABLE_THIRD_PARTY_PCIE_CARD_DELL_DEFAULT_COOLING_RESPONSE=<true or false> \
   -e KEEP_THIRD_PARTY_PCIE_CARD_COOLING_RESPONSE_STATE_ON_EXIT=<true or false> \
   --device=/dev/ipmi0:/dev/ipmi0:rw \
-  tigerblue77/dell_idrac_fan_controller:latest
+  ghcr.io/minuscortex/dell_idrac_fan_controller:latest
 ```
 
 2. with LAN iDRAC:
@@ -103,7 +111,7 @@ docker run -d \
   -e CHECK_INTERVAL=<seconds between each check> \
   -e DISABLE_THIRD_PARTY_PCIE_CARD_DELL_DEFAULT_COOLING_RESPONSE=<true or false> \
   -e KEEP_THIRD_PARTY_PCIE_CARD_COOLING_RESPONSE_STATE_ON_EXIT=<true or false> \
-  tigerblue77/dell_idrac_fan_controller:latest
+  ghcr.io/minuscortex/dell_idrac_fan_controller:latest
 ```
 
 `docker-compose.yml` examples:
@@ -115,7 +123,7 @@ version: '3.8'
 
 services:
   Dell_iDRAC_fan_controller:
-    image: tigerblue77/dell_idrac_fan_controller:latest
+    image: ghcr.io/minuscortex/dell_idrac_fan_controller:latest
     container_name: Dell_iDRAC_fan_controller
     restart: unless-stopped
     environment:
@@ -136,7 +144,7 @@ version: '3.8'
 
 services:
   Dell_iDRAC_fan_controller:
-    image: tigerblue77/dell_idrac_fan_controller:latest
+    image: ghcr.io/minuscortex/dell_idrac_fan_controller:latest
     container_name: Dell_iDRAC_fan_controller
     restart: unless-stopped
     environment:
@@ -198,7 +206,7 @@ Don't forget to give the project a star! Thanks again!
 
 To test locally, use either :
 ```bash
-docker build -t tigerblue77/dell_idrac_fan_controller:dev .
+docker build -t ghcr.io/minuscortex/dell_idrac_fan_controller:dev .
 docker run -d ...
 ```
 or
